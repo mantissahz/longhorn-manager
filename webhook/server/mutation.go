@@ -11,6 +11,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimagedatasource"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimagemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backup"
+	"github.com/longhorn/longhorn-manager/webhook/resources/backuptarget"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backupvolume"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
@@ -41,6 +42,7 @@ func Mutation(client *client.Client) (http.Handler, []admission.Resource, error)
 		orphan.NewMutator(client.Datastore),
 		sharemanager.NewMutator(client.Datastore),
 		backupvolume.NewMutator(client.Datastore),
+		backuptarget.NewMutator(client.Datastore),
 		snapshot.NewMutator(client.Datastore),
 		replica.NewMutator(client.Datastore),
 		supportbundle.NewMutator(client.Datastore),

@@ -207,25 +207,48 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	log := getLoggerForBackupVolume(bvc.logger, backupVolume)
+	log.Warnf("[James_DBG] BackupVolumeCtlr isResponsibleFor contorller: %v", backupVolume.Status.OwnerID)
 
 	// Get default backup target
-	backupTarget, err := bvc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	// backupTarget, err := bvc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	log.Warnf("[James_DBG] BackupVolumeCtlr backupVolume.Spec.BackupTargetURL: %v", backupVolume.Spec.BackupTargetURL)
+	backupTarget, err := bvc.ds.GetBackupTargetRO(backupVolume.Spec.BackupTargetName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
+			log.Warnf("[James_DBG] GetBackupTargetRO backup.Spec.BackupTargetName: %v not found", backupVolume.Spec.BackupTargetName)
 			return nil
 		}
-		return errors.Wrapf(err, "failed to get %s backup target", types.DefaultBackupTargetName)
+		return errors.Wrapf(err, "failed to get %s backup target", backupVolume.Spec.BackupTargetName)
 	}
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
+		log.Warnf("[James_DBG] BackupVolumeCtlr delete BV volumeName: %v", backupVolume.Spec.VolumeName)
+		backupsOfVolume, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolume.Spec.VolumeName)
+		if err != nil {
+			return errors.Wrap(err, "failed to get backups by volume name")
+		}
+		log.Warnf("[James_DBG] BackupVolumeCtlr delete BV backupsOfVolume: %v", backupsOfVolume)
 
-		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
-			return errors.Wrap(err, "failed to delete backups")
+		for backupName := range backupsOfVolume {
+			log.Warnf("[James_DBG] BackupVolumeCtlr delete BV delete backup: %v", backupName)
+			backupObj, err := bvc.ds.GetBackupRO(backupName)
+			if err != nil {
+				return errors.Wrap(err, "failed to get the backup")
+			}
+			if backupObj.Spec.BackupTargetURL != backupVolume.Spec.BackupTargetURL {
+				continue
+			}
+			log.Warnf("[James_DBG] BackupVolumeCtlr delete BV Truly delete backup: %v", backupName)
+			if err := bvc.ds.DeleteBackup(backupName); err != nil {
+				return errors.Wrap(err, "failed to delete backups")
+			}
 		}
 
 		// Delete the backup volume from the remote backup target
-		if backupTarget.Spec.BackupTargetURL != "" {
+		log.Warnf("[James_DBG] BackupVolumeCtlr delete BV backupTarget.DeletionTimestamp.IsZero(): %v, backupTarget.Spec.BackupTargetURL: %v", backupTarget.DeletionTimestamp.IsZero(), backupTarget.Spec.BackupTargetURL)
+		if backupTarget != nil && backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" {
+			log.Warnf("[James_DBG] BackupVolumeCtlr delete BV backupTarget.DeletionTimestamp == nil")
 			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 			if err != nil || engineClientProxy == nil {
 				log.WithError(err).Error("Failed to init backup target clients")
@@ -233,10 +256,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			}
 			defer engineClientProxy.Close()
 
-			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
+			log.Warnf("[James_DBG] BackupVolumeCtlr reconcile BVDelete delete remote backupVolumeName: %v, volumeName: %v", backupVolumeName, backupVolume.Spec.VolumeName)
+			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, backupVolume.Spec.VolumeName, backupTargetClient.Credential); err != nil {
 				return errors.Wrap(err, "failed to delete remote backup volume")
 			}
 		}
+
 		return bvc.ds.RemoveFinalizerForBackupVolume(backupVolume)
 	}
 
@@ -256,11 +281,13 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}()
 
 	// Check the controller should run synchronization
+	log.Warnf("[James_DBG] BackupVolumeCtlr backupVolume.Status.LastSyncedAt.IsZero(): %v", backupVolume.Status.LastSyncedAt.IsZero())
 	if !backupVolume.Status.LastSyncedAt.IsZero() &&
 		!backupVolume.Spec.SyncRequestedAt.After(backupVolume.Status.LastSyncedAt.Time) {
 		return nil
 	}
 
+	log.Warnf("[James_DBG] BackupVolumeCtlr getBackupTarget")
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 	if err != nil {
 		log.WithError(err).Error("Failed to init backup target clients")
@@ -269,7 +296,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	defer engineClientProxy.Close()
 
 	// Get a list of all the backups that are stored in the backup target
-	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential)
+	log.Warnf("[James_DBG] BackupVolumeCtlr BackupNameList by VolumeName: %v", backupVolume.Spec.VolumeName)
+	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, backupVolume.Spec.VolumeName, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Failed to list backups from backup target")
 		return nil // Ignore error to prevent enqueue
@@ -277,11 +305,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupStoreBackups := sets.NewString(res...)
 
 	// Get a list of all the backups that exist as custom resources in the cluster
-	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolumeName)
+	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolume.Spec.VolumeName)
 	if err != nil {
 		log.WithError(err).Error("Failed to list backups in the cluster")
 		return err
 	}
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile ListBackupsWithBackupVolumeName: %+v", clusterBackups)
 
 	// Get `Time to live` after failed backup was marked as `Error` or `Unknown`,
 	failedBackupTTL, err := bvc.ds.GetSettingAsInt(types.SettingNameFailedBackupTTL)
@@ -290,6 +319,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 	clustersSet := sets.NewString()
 	for _, b := range clusterBackups {
+		// Skip other backup target backups from the same volume
+		log.Warnf("[James_DBG] BackupVolumeCtlr reconcile b.Spec.BackupTargetName: %v, backupVolume.Spec.BackupTargetName: %v", b.Spec.BackupTargetURL, backupVolume.Spec.BackupTargetURL)
+		if b.Spec.BackupTargetURL != backupVolume.Spec.BackupTargetURL {
+			log.Warnf("[James_DBG] BackupVolumeCtlr reconcile b.Spec.BackupTargetName != backupVolume.Spec.BackupTargetName, Skipped")
+			continue
+		}
 		// Skip the Backup CR which is created from the local cluster and
 		// the snapshot backup hasn't be completed or pulled from the remote backup target yet
 		if b.Spec.SnapshotName != "" && b.Status.State != longhorn.BackupStateCompleted {
@@ -309,13 +344,14 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// Get a list of backups that *are* in the backup target and *aren't* in the cluster
 	// and create the Backup CR in the cluster
 	backupsToPull := backupStoreBackups.Difference(clustersSet)
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile backupsToPull: %+v", backupsToPull)
 	if count := backupsToPull.Len(); count > 0 {
 		log.Infof("Found %d backups in the backup target that do not exist in the cluster and need to be pulled", count)
 	}
 	for backupName := range backupsToPull {
 		backupLabelMap := map[string]string{}
 
-		backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTargetClient.URL)
+		backupURL := backupstore.EncodeBackupURL(backupName, backupVolume.Spec.VolumeName, backupTargetClient.URL)
 		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil {
 			log.WithError(err).WithFields(logrus.Fields{
 				"backup":       backupName,
@@ -330,12 +366,17 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		backup := &longhorn.Backup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupName,
+				Labels: map[string]string{
+					types.LonghornLabelBackupTarget: backupTarget.Name,
+				},
 			},
 			Spec: longhorn.BackupSpec{
-				Labels: backupLabelMap,
+				Labels:           backupLabelMap,
+				BackupTargetURL:  backupVolume.Spec.BackupTargetURL,
+				BackupTargetName: backupVolume.Spec.BackupTargetName,
 			},
 		}
-		if _, err = bvc.ds.CreateBackup(backup, backupVolumeName); err != nil && !apierrors.IsAlreadyExists(err) {
+		if _, err = bvc.ds.CreateBackup(backup, backupVolume.Spec.VolumeName); err != nil && !apierrors.IsAlreadyExists(err) {
 			log.WithError(err).Errorf("Failed to create backup %s in the cluster", backupName)
 			return err
 		}
@@ -344,6 +385,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// Get a list of backups that *are* in the cluster and *aren't* in the backup target
 	// and delete the Backup CR in the cluster
 	backupsToDelete := clustersSet.Difference(backupStoreBackups)
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile backupsToDelete: %+v", backupsToDelete)
 	if count := backupsToDelete.Len(); count > 0 {
 		log.Infof("Found %d backups in the backup target that do not exist in the backup target and need to be deleted", count)
 	}
@@ -353,12 +395,14 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 	}
 
-	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolumeName, backupTargetClient.URL)
+	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolume.Spec.VolumeName, backupTargetClient.URL)
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile backupVolumeMetadataURL: %v", backupVolumeMetadataURL)
 	configMetadata, err := backupTargetClient.BackupConfigMetaGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Failed to get backup volume config metadata from backup target")
 		return nil // Ignore error to prevent enqueue
 	}
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile configMetadata: %+v", configMetadata)
 	if configMetadata == nil {
 		return nil
 	}
@@ -367,25 +411,30 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// skip read the backup volume config
 	if len(backupsToPull) == 0 && len(backupsToDelete) == 0 &&
 		backupVolume.Status.LastModificationTime.Time.Equal(configMetadata.ModificationTime) {
+		log.Warnf("[James_DBG] BackupVolumeCtlr reconcile sync and return")
 		backupVolume.Status.LastSyncedAt = syncTime
 		return nil
 	}
 
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile BackupVolumeGet from backupVolumeMetadataURL: %v", backupVolumeMetadataURL)
 	backupVolumeInfo, err := backupTargetClient.BackupVolumeGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Failed to get backup volume config from backup target")
 		return nil // Ignore error to prevent enqueue
 	}
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile backupVolumeInfo: %v", backupVolumeInfo)
 	if backupVolumeInfo == nil {
 		return nil
 	}
 
 	// Update the Backup CR spec.syncRequestAt to request the
 	// backup_controller to reconcile the Backup CR if the last backup changed
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile backupVolume.Status.LastBackupName: %v, backupVolumeInfo.LastBackupName: %v", backupVolume.Status.LastBackupName, backupVolumeInfo.LastBackupName)
 	if backupVolume.Status.LastBackupName != backupVolumeInfo.LastBackupName {
 		backup, err := bvc.ds.GetBackup(backupVolumeInfo.LastBackupName)
 		if err == nil {
 			backup.Spec.SyncRequestedAt = syncTime
+			log.Warnf("[James_DBG] BackupVolumeCtlr reconcile backup(%v): %+v", backup.Name, backup.Spec)
 			if _, err = bvc.ds.UpdateBackup(backup); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				log.WithError(err).Errorf("Failed to update backup %s spec", backup.Name)
 			}
@@ -393,6 +442,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 
 	// Update BackupVolume CR status
+	log.Warnf("[James_DBG] BackupVolumeCtlr reconcile sync backupVolume status from backupVolumeInfo")
 	backupVolume.Status.LastModificationTime = metav1.Time{Time: configMetadata.ModificationTime}
 	backupVolume.Status.Size = backupVolumeInfo.Size
 	backupVolume.Status.Labels = backupVolumeInfo.Labels

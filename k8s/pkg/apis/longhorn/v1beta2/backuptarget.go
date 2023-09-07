@@ -33,6 +33,9 @@ type BackupTargetStatus struct {
 	// Available indicates if the remote backup target is available or not.
 	// +optional
 	Available bool `json:"available"`
+	// Default indicates if the remote backup target is default backup target or not.
+	// +optional
+	Default bool `json:"default"`
 	// Records the reason on why the backup target is unavailable.
 	// +optional
 	// +nullable

@@ -33,6 +33,13 @@ type BackupSpec struct {
 	// The labels of snapshot backup.
 	// +optional
 	Labels map[string]string `json:"labels"`
+	// The backup target url.
+	// +optional
+	// +nullable
+	BackupTargetURL string `json:"backupTargetURL"`
+	// The backup target name.
+	// +optional
+	BackupTargetName string `json:"backupTargetName"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup

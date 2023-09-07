@@ -3328,6 +3328,26 @@ func (s *DataStore) DeleteBackupTarget(backupTargetName string) error {
 	return s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Delete(context.TODO(), backupTargetName, metav1.DeleteOptions{})
 }
 
+// RemoveFinalizerForBackupTarget will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackupTarget(backupTarget *longhorn.BackupTarget) error {
+	if !util.FinalizerExists(longhornFinalizerKey, backupTarget) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, backupTarget); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if backupTarget.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backup target %s", backupTarget.Name)
+	}
+	return nil
+}
+
 // CreateBackupVolume creates a Longhorn BackupVolumes CR and verifies creation
 func (s *DataStore) CreateBackupVolume(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
 	ret, err := s.lhClient.LonghornV1beta2().BackupVolumes(s.namespace).Create(context.TODO(), backupVolume, metav1.CreateOptions{})
@@ -3363,6 +3383,32 @@ func (s *DataStore) ListBackupVolumes() (map[string]*longhorn.BackupVolume, erro
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+// ListBackupVolumesWithBackupTargetName returns an object contains all backup volumes in the cluster BackupVolumes CR
+// of the given backup target name
+func (s *DataStore) ListBackupVolumesWithBackupTargetName(backupTagetName string) (map[string]*longhorn.BackupVolume, error) {
+	selector, err := getBackupTargetSelector(backupTagetName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.bvLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupVolume{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+func getBackupTargetSelector(backupTargetName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackupTargetLabels(backupTargetName),
+	})
 }
 
 func getBackupVolumeSelector(backupVolumeName string) (labels.Selector, error) {
@@ -3555,9 +3601,11 @@ func (s *DataStore) RemoveFinalizerForBackup(backup *longhorn.Backup) error {
 		// finalizer already removed
 		return nil
 	}
+	logrus.Warnf("[James_DBG] remove backup(%v) finalizer", backup.Name)
 	if err := util.RemoveFinalizer(longhornFinalizerKey, backup); err != nil {
 		return err
 	}
+	logrus.Warnf("[James_DBG] backup(%v) update", backup.Name)
 	_, err := s.lhClient.LonghornV1beta2().Backups(s.namespace).Update(context.TODO(), backup, metav1.UpdateOptions{})
 	if err != nil {
 		// workaround `StorageError: invalid object, Code: 4` due to empty object

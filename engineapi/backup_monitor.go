@@ -84,6 +84,7 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 		if volumeRecurringJobInfo != "" {
 			backup.Spec.Labels[types.VolumeRecurringJobInfoLabel] = volumeRecurringJobInfo
 		}
+		logger.Warnf("[James_DBG] NewBackupMonitor backupTargetClient.URL: %v", backupTargetClient.URL)
 		_, replicaAddress, err := engineClientProxy.SnapshotBackup(engine, backup.Spec.SnapshotName, backup.Name,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum, string(compressionMethod), concurrentLimit, storageClassName,
 			backup.Spec.Labels, backupTargetClient.Credential)

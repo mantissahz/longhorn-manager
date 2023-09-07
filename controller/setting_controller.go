@@ -71,16 +71,7 @@ type SettingController struct {
 	version                     string
 
 	// backup store timer is responsible for updating the backupTarget.spec.syncRequestAt
-	bsTimer *BackupStoreTimer
-}
-
-type BackupStoreTimer struct {
-	logger       logrus.FieldLogger
-	controllerID string
-	ds           *datastore.DataStore
-
-	pollInterval time.Duration
-	stopCh       chan struct{}
+	// bsTimer *BackupStoreTimer
 }
 
 type Version struct {
@@ -220,10 +211,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.syncUpgradeChecker(); err != nil {
 			return err
 		}
-	case string(types.SettingNameBackupTarget), string(types.SettingNameBackupTargetCredentialSecret), string(types.SettingNameBackupstorePollInterval):
-		if err := sc.syncBackupTarget(); err != nil {
-			return err
-		}
+	// case string(types.SettingNameBackupTarget), string(types.SettingNameBackupTargetCredentialSecret), string(types.SettingNameBackupstorePollInterval):
+	// 	if err := sc.syncBackupTarget(); err != nil {
+	// 		return err
+	// 	}
 	case string(types.SettingNameTaintToleration):
 		if err := sc.updateTaintToleration(); err != nil {
 			return err
@@ -287,107 +278,107 @@ func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
 	return responsibleNodes[0], nil
 }
 
-func (sc *SettingController) syncBackupTarget() (err error) {
-	defer func() {
-		err = errors.Wrap(err, "failed to sync backup target")
-	}()
+// func (sc *SettingController) syncBackupTarget() (err error) {
+// 	defer func() {
+// 		err = errors.Wrap(err, "failed to sync backup target")
+// 	}()
 
-	stopTimer := func() {
-		if sc.bsTimer != nil {
-			sc.bsTimer.Stop()
-			sc.bsTimer = nil
-		}
-	}
+// 	stopTimer := func() {
+// 		if sc.bsTimer != nil {
+// 			sc.bsTimer.Stop()
+// 			sc.bsTimer = nil
+// 		}
+// 	}
 
-	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
-	if err != nil {
-		return errors.Wrap(err, "failed to select node for sync backup target")
-	}
-	if responsibleNodeID != sc.controllerID {
-		stopTimer()
-		return nil
-	}
+// 	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
+// 	if err != nil {
+// 		return errors.Wrap(err, "failed to select node for sync backup target")
+// 	}
+// 	if responsibleNodeID != sc.controllerID {
+// 		stopTimer()
+// 		return nil
+// 	}
 
-	// Get settings
-	targetSetting, err := sc.ds.GetSetting(types.SettingNameBackupTarget)
-	if err != nil {
-		return err
-	}
+// 	// Get settings
+// 	targetSetting, err := sc.ds.GetSetting(types.SettingNameBackupTarget)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	secretSetting, err := sc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
-	if err != nil {
-		return err
-	}
+// 	secretSetting, err := sc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	interval, err := sc.ds.GetSettingAsInt(types.SettingNameBackupstorePollInterval)
-	if err != nil {
-		return err
-	}
-	pollInterval := time.Duration(interval) * time.Second
+// 	interval, err := sc.ds.GetSettingAsInt(types.SettingNameBackupstorePollInterval)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	pollInterval := time.Duration(interval) * time.Second
 
-	backupTarget, err := sc.ds.GetBackupTarget(types.DefaultBackupTargetName)
-	if err != nil {
-		if !datastore.ErrorIsNotFound(err) {
-			return err
-		}
+// 	backupTarget, err := sc.ds.GetBackupTarget(types.DefaultBackupTargetName)
+// 	if err != nil {
+// 		if !datastore.ErrorIsNotFound(err) {
+// 			return err
+// 		}
 
-		// Create the default BackupTarget CR if not present
-		backupTarget, err = sc.ds.CreateBackupTarget(&longhorn.BackupTarget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: types.DefaultBackupTargetName,
-			},
-			Spec: longhorn.BackupTargetSpec{
-				BackupTargetURL:  targetSetting.Value,
-				CredentialSecret: secretSetting.Value,
-				PollInterval:     metav1.Duration{Duration: pollInterval},
-			},
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to create backup target")
-		}
-	}
+// 		// Create the default BackupTarget CR if not present
+// 		backupTarget, err = sc.ds.CreateBackupTarget(&longhorn.BackupTarget{
+// 			ObjectMeta: metav1.ObjectMeta{
+// 				Name: types.DefaultBackupTargetName,
+// 			},
+// 			Spec: longhorn.BackupTargetSpec{
+// 				BackupTargetURL:  targetSetting.Value,
+// 				CredentialSecret: secretSetting.Value,
+// 				PollInterval:     metav1.Duration{Duration: pollInterval},
+// 			},
+// 		})
+// 		if err != nil {
+// 			return errors.Wrap(err, "failed to create backup target")
+// 		}
+// 	}
 
-	existingBackupTarget := backupTarget.DeepCopy()
-	defer func() {
-		backupTarget.Spec.BackupTargetURL = targetSetting.Value
-		backupTarget.Spec.CredentialSecret = secretSetting.Value
-		backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
-		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
-			// Force sync backup target once the BackupTarget spec be updated
-			backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
-			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				sc.logger.WithError(err).Warn("Failed to update backup target")
-			}
-		}
-	}()
+// 	existingBackupTarget := backupTarget.DeepCopy()
+// 	defer func() {
+// 		backupTarget.Spec.BackupTargetURL = targetSetting.Value
+// 		backupTarget.Spec.CredentialSecret = secretSetting.Value
+// 		backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
+// 		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
+// 			// Force sync backup target once the BackupTarget spec be updated
+// 			backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
+// 			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+// 				sc.logger.WithError(err).Warn("Failed to update backup target")
+// 			}
+// 		}
+// 	}()
 
-	noNeedMonitor := targetSetting.Value == "" || pollInterval == time.Duration(0)
-	if noNeedMonitor {
-		stopTimer()
-		return nil
-	}
+// 	noNeedMonitor := targetSetting.Value == "" || pollInterval == time.Duration(0)
+// 	if noNeedMonitor {
+// 		stopTimer()
+// 		return nil
+// 	}
 
-	if sc.bsTimer != nil {
-		if sc.bsTimer.pollInterval == pollInterval {
-			// No need to start a new timer if there was one
-			return
-		}
-		// Stop the timer if the poll interval changes
-		stopTimer()
-	}
+// 	if sc.bsTimer != nil {
+// 		if sc.bsTimer.pollInterval == pollInterval {
+// 			// No need to start a new timer if there was one
+// 			return
+// 		}
+// 		// Stop the timer if the poll interval changes
+// 		stopTimer()
+// 	}
 
-	// Start backup store timer
-	sc.bsTimer = &BackupStoreTimer{
-		logger:       sc.logger.WithField("component", "backup-store-timer"),
-		controllerID: sc.controllerID,
-		ds:           sc.ds,
+// 	// Start backup store timer
+// 	sc.bsTimer = &BackupStoreTimer{
+// 		logger:       sc.logger.WithField("component", "backup-store-timer"),
+// 		controllerID: sc.controllerID,
+// 		ds:           sc.ds,
 
-		pollInterval: pollInterval,
-		stopCh:       make(chan struct{}),
-	}
-	go sc.bsTimer.Start()
-	return nil
-}
+// 		pollInterval: pollInterval,
+// 		stopCh:       make(chan struct{}),
+// 	}
+// 	go sc.bsTimer.Start()
+// 	return nil
+// }
 
 func (sc *SettingController) updateTaintToleration() error {
 	setting, err := sc.ds.GetSetting(types.SettingNameTaintToleration)
@@ -841,40 +832,6 @@ func (sc *SettingController) updateNodeSelector() error {
 		}
 	}
 	return nil
-}
-
-func (bst *BackupStoreTimer) Start() {
-	if bst == nil {
-		return
-	}
-	log := bst.logger.WithFields(logrus.Fields{
-		"interval": bst.pollInterval,
-	})
-	log.Info("Starting backup store timer")
-
-	wait.PollUntil(bst.pollInterval, func() (done bool, err error) {
-		backupTarget, err := bst.ds.GetBackupTarget(types.DefaultBackupTargetName)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to get %s backup target", types.DefaultBackupTargetName)
-			return false, err
-		}
-
-		log.Debug("Triggering sync backup target")
-		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
-		if _, err = bst.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Warn("Failed to updating backup target")
-		}
-		return false, nil
-	}, bst.stopCh)
-
-	log.Infof("Stopped backup store timer")
-}
-
-func (bst *BackupStoreTimer) Stop() {
-	if bst == nil {
-		return
-	}
-	bst.stopCh <- struct{}{}
 }
 
 func (sc *SettingController) syncUpgradeChecker() error {
