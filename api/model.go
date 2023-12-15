@@ -286,9 +286,11 @@ type DetachInput struct {
 	ForceDetach  bool   `json:"forceDetach"`
 }
 
+// SnapshotInput struct is used for the actions of APIs
 type SnapshotInput struct {
-	Name   string            `json:"name"`
-	Labels map[string]string `json:"labels"`
+	Name             string            `json:"name"`
+	Labels           map[string]string `json:"labels"`
+	BackupTargetName string            `json:"backupTargetName"`
 }
 
 type SnapshotCRInput struct {
@@ -2245,13 +2247,14 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Type: "recurringJob",
 		},
 		RecurringJobSpec: longhorn.RecurringJobSpec{
-			Name:        recurringJob.Name,
-			Groups:      recurringJob.Spec.Groups,
-			Task:        recurringJob.Spec.Task,
-			Cron:        recurringJob.Spec.Cron,
-			Retain:      recurringJob.Spec.Retain,
-			Concurrency: recurringJob.Spec.Concurrency,
-			Labels:      recurringJob.Spec.Labels,
+			Name:             recurringJob.Name,
+			Groups:           recurringJob.Spec.Groups,
+			Task:             recurringJob.Spec.Task,
+			Cron:             recurringJob.Spec.Cron,
+			Retain:           recurringJob.Spec.Retain,
+			Concurrency:      recurringJob.Spec.Concurrency,
+			Labels:           recurringJob.Spec.Labels,
+			BackupTargetName: recurringJob.Spec.BackupTargetName,
 		},
 	}
 }
