@@ -375,7 +375,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume, backup)
 		}
 
-		if err := bc.backupBackingImage(volume); err != nil {
+		if err := bc.backupBackingImage(volume, backup); err != nil {
 			return err
 		}
 
@@ -613,7 +613,7 @@ func (bc *BackupController) validateBackingImageChecksum(volName, biName string)
 	return bi.Status.Checksum, nil
 }
 
-func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
+func (bc *BackupController) backupBackingImage(volume *longhorn.Volume, backup *longhorn.Backup) error {
 	if volume == nil {
 		return nil
 	}
@@ -642,7 +642,9 @@ func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
 				Name: biName,
 			},
 			Spec: longhorn.BackupBackingImageSpec{
-				UserCreated: true,
+				UserCreated:      true,
+				BackupTargetName: backup.Spec.BackupTargetName,
+				BackupTargetURL:  backup.Spec.BackupTargetURL,
 			},
 		}
 		if _, err = bc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
