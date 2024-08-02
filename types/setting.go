@@ -124,6 +124,7 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
+	SettingNameBackupExecuteTimeout                                     = SettingName("backup-execute-timeout")
 )
 
 var (
@@ -206,6 +207,7 @@ var (
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge,
+		SettingNameBackupExecuteTimeout,
 	}
 )
 
@@ -314,6 +316,7 @@ var (
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
+		SettingNameBackupExecuteTimeout:                                     SettingDefinitionBackupExecuteTimeout,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -367,6 +370,19 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "1440",
+	}
+
+	SettingDefinitionBackupExecuteTimeout = SettingDefinition{
+		DisplayName: "Backup Execute Timeout",
+		Description: "In minutes. This setting determines the timeout for the backup engine execution. Set to 0 to disable the timeout.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionRestoreVolumeRecurringJobs = SettingDefinition{
