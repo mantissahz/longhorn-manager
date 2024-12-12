@@ -523,19 +523,12 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 	// Unset backup target to prevent the remote backup target
 	// backup volume config, and backup config and it's data
 	// being deleted during uninstall process.
-	// TODO:
-	//   Remove the setting CRs and add OwnerReferences on BackupTarget CR.
-	//   After that when deleting setting CRs, the default BackupTarget CR
-	//   be cascading deleted automatically.
-	targetSetting, err := c.ds.GetSetting(types.SettingNameBackupTarget)
-	if err != nil {
+	// Delete the BackupTarget CRs
+	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
 		return true, err
-	}
-	if targetSetting.Value != "" {
-		targetSetting.Value = ""
-		if _, err := c.ds.UpdateSetting(targetSetting); err != nil {
-			return true, err
-		}
+	} else if len(backupTargets) > 0 {
+		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
+		return true, c.deleteBackupTargets(backupTargets)
 	}
 
 	// Waits the BackupVolume CRs be clean up by backup_target_controller
@@ -808,9 +801,16 @@ func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*long
 			bt.Annotations = make(map[string]string)
 		}
 		if bt.DeletionTimestamp == nil {
+			oldURL := bt.Spec.BackupTargetURL
+			_, ok := bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)]
 			bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)] = ""
-			if _, err := c.ds.UpdateBackupTarget(bt); err != nil {
-				return errors.Wrap(err, "failed to update backup target annotations to mark for deletion")
+			bt.Spec.BackupTargetURL = ""
+			if oldURL != "" || !ok {
+				log.Info("Clean up BackupTarget URL and add annotation to mark for deletion")
+				if _, err := c.ds.UpdateBackupTarget(bt); err != nil {
+					return errors.Wrap(err, "failed to update backup target annotations to mark for deletion")
+				}
+				continue
 			}
 			if errDelete := c.ds.DeleteBackupTarget(bt.Name); errDelete != nil {
 				if datastore.ErrorIsNotFound(errDelete) {
