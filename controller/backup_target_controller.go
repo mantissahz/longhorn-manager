@@ -375,6 +375,10 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 			return errors.Wrap(err, "failed to clean up BackupBackingImages")
 		}
 
+		if err := btc.syncVolumesBackupTarget(backupTarget.Name); err != nil {
+			return errors.Wrap(err, "failed to sync volumes")
+		}
+
 		stopTimer(backupTarget.Name)
 		return btc.ds.RemoveFinalizerForBackupTarget(backupTarget)
 	}
@@ -833,6 +837,28 @@ func (btc *BackupTargetController) cleanupBackupBackingImages(backupTargetName s
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, ","))
 	}
+	return nil
+}
+
+func (btc *BackupTargetController) syncVolumesBackupTarget(backupTargetName string) error {
+	volumes, err := btc.ds.ListVolumesWithBackupTargetName(backupTargetName)
+	if err != nil {
+		return err
+	}
+
+	var errs []string
+	for _, v := range volumes {
+		v.Labels[types.LonghornLabelBackupTarget] = types.DefaultBackupTargetName
+		v.Spec.BackupTargetName = types.DefaultBackupTargetName
+		if _, err := btc.ds.UpdateVolume(v); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, ","))
+	}
+
 	return nil
 }
 

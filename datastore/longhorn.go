@@ -1060,6 +1060,33 @@ func (s *DataStore) ListVolumesBySelectorRO(selector labels.Selector) ([]*longho
 	return s.volumeLister.Volumes(s.namespace).List(selector)
 }
 
+// ListVolumesROWithBackupTargetName returns a single object contains all volumes
+// with the given backup target name
+func (s *DataStore) ListVolumesROWithBackupTargetName(backupTargetName string) ([]*longhorn.Volume, error) {
+	selector, err := getBackupTargetSelector(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+	return s.volumeLister.Volumes(s.namespace).List(selector)
+}
+
+// ListVolumesWithBackupTargetName returns a single object contains all volumes
+// with the given backup target name
+func (s *DataStore) ListVolumesWithBackupTargetName(backupTargetName string) (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	list, err := s.ListVolumesROWithBackupTargetName(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
 // ListVolumes returns an object contains all Volume
 func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	itemMap := make(map[string]*longhorn.Volume)
