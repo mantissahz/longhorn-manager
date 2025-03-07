@@ -89,6 +89,16 @@ const (
 	VolumeCloneStateFailed    = VolumeCloneState("failed")
 )
 
+type OfflineRebuildState string
+
+const (
+	OfflineRebuildStateEmpty      = OfflineRebuildState("")
+	OfflineRebuildStateInitiating = OfflineRebuildState("initiating")
+	OfflineRebuildStateInprogress = OfflineRebuildState("inprogress")
+	OfflineRebuildStateCompleted  = OfflineRebuildState("completed")
+	OfflineRebuildStateFailed     = OfflineRebuildState("failed")
+)
+
 type VolumeCloneStatus struct {
 	// +optional
 	SourceVolume string `json:"sourceVolume"`
@@ -356,6 +366,8 @@ type VolumeStatus struct {
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
+	// +optional
+	OfflineRebuildState OfflineRebuildState `json:"offlineRebuildState"`
 }
 
 // +genclient

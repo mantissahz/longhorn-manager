@@ -4490,6 +4490,8 @@ spec:
                 type: string
               lastDegradedAt:
                 type: string
+              offlineRebuildState:
+                type: string
               ownerID:
                 type: string
               pendingNodeID:
