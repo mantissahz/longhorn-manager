@@ -75,9 +75,10 @@ type Volume struct {
 	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
 	Ready            bool                          `json:"ready"`
 
-	AccessMode    longhorn.AccessMode        `json:"accessMode"`
-	ShareEndpoint string                     `json:"shareEndpoint"`
-	ShareState    longhorn.ShareManagerState `json:"shareState"`
+	AccessMode          longhorn.AccessMode          `json:"accessMode"`
+	ShareEndpoint       string                       `json:"shareEndpoint"`
+	ShareState          longhorn.ShareManagerState   `json:"shareState"`
+	OfflineRebuildState longhorn.OfflineRebuildState `json:"offlineRebuildState"`
 
 	Migratable bool `json:"migratable"`
 
@@ -994,6 +995,9 @@ func volumeSchema(volume *client.Schema) {
 		"cancelExpansion": {
 			Output: "volume",
 		},
+		"offlineRebuild": {
+			Output: "volume",
+		},
 		"trimFilesystem": {
 			Output: "volume",
 		},
@@ -1634,9 +1638,10 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DataEngine:                  v.Spec.DataEngine,
 		Ready:                       ready,
 
-		AccessMode:    v.Spec.AccessMode,
-		ShareEndpoint: v.Status.ShareEndpoint,
-		ShareState:    v.Status.ShareState,
+		AccessMode:          v.Spec.AccessMode,
+		ShareEndpoint:       v.Status.ShareEndpoint,
+		ShareState:          v.Status.ShareState,
+		OfflineRebuildState: v.Status.OfflineRebuildState,
 
 		Migratable: v.Spec.Migratable,
 
@@ -1677,6 +1682,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
+			actions["offlineRebuild"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
