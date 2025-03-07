@@ -602,6 +602,32 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	return v, nil
 }
 
+func (m *VolumeManager) OfflineRebuild(volumeName string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to rebuild the offline volume %v", volumeName)
+	}()
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	if v.Status.State != longhorn.VolumeStateDetached {
+		return nil, fmt.Errorf("volume %v is not offline", volumeName)
+	}
+	if v.Status.OfflineRebuildState == longhorn.OfflineRebuildStateInitiating || v.Status.OfflineRebuildState == longhorn.OfflineRebuildStateInprogress {
+		return nil, fmt.Errorf("volume %v is already in offline rebuild", volumeName)
+	}
+
+	v.Status.OfflineRebuildState = longhorn.OfflineRebuildStateInitiating
+	v, err = m.ds.UpdateVolumeStatus(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Rebuiding volume %v is requested", volumeName)
+	return v, nil
+}
+
 func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to trim filesystem for volume %v", name)
