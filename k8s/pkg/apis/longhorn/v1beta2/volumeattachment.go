@@ -42,6 +42,7 @@ type AttacherType string
 const (
 	AttacherTypeCSIAttacher                      = AttacherType("csi-attacher")
 	AttacherTypeLonghornAPI                      = AttacherType("longhorn-api")
+	AttacherTypeVolumeController                 = AttacherType("volume-controller")
 	AttacherTypeSnapshotController               = AttacherType("snapshot-controller")
 	AttacherTypeBackupController                 = AttacherType("backup-controller")
 	AttacherTypeVolumeCloneController            = AttacherType("volume-clone-controller")
