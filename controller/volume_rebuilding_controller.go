@@ -192,7 +192,7 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 	}()
 
 	if vol.Status.OfflineRebuildState == longhorn.OfflineRebuildStateInitiating {
-		attachmentID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeController, vol.Name)
+		attachmentID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRebuildingController, volName)
 		createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeRebuildingController)
 		return nil
 	}
