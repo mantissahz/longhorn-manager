@@ -682,6 +682,10 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		return nil
 	}
 
+	if v.Status.OfflineRebuildState == longhorn.OfflineRebuildStateInitiating && v.Status.State == longhorn.VolumeStateAttached {
+		v.Status.OfflineRebuildState = longhorn.OfflineRebuildStateInprogress
+	}
+
 	// wait for monitoring to start
 	if e.Status.ReplicaModeMap == nil {
 		return nil
