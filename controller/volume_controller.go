@@ -804,6 +804,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		return nil
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
+		if v.Status.OfflineRebuildState == longhorn.OfflineRebuildStateInprogress {
+			v.Status.OfflineRebuildState = longhorn.OfflineRebuildStateCompleted
+		}
 		if oldRobustness == longhorn.VolumeRobustnessDegraded {
 			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonHealthy, "volume %v became healthy", v.Name)
 		}
@@ -853,6 +856,13 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			if err := c.replenishReplicas(v, e, rs, ""); err != nil {
 				return err
 			}
+		}
+		readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
+		if err != nil {
+			return err
+		}
+		if healthyCount >= len(readyNodes) && v.Status.OfflineRebuildState == longhorn.OfflineRebuildStateInprogress {
+			v.Status.OfflineRebuildState = longhorn.OfflineRebuildStateCompleted
 		}
 		// replicas will be started by ReconcileVolumeState() later
 	}
