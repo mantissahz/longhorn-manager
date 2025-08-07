@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -34,6 +36,9 @@ type VolumeRebuildingController struct {
 	namespace string
 	// use as the OwnerID of the controller
 	controllerID string
+
+	// replica scheduler to check if there is a schedulable disk
+	scheduler *scheduler.ReplicaScheduler
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -64,6 +69,7 @@ func NewVolumeRebuildingController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-rebuilding-controller"}),
 	}
+	vbc.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	var err error
 	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -96,6 +102,13 @@ func NewVolumeRebuildingController(
 		return nil, err
 	}
 	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: vbc.enqueueVolumeNodeReady,
+	}, 0); err != nil {
+		return nil, err
+	}
+	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.NodeInformer.HasSynced)
 
 	return vbc, nil
 }
@@ -181,6 +194,49 @@ func (vbc *VolumeRebuildingController) enqueueVolumeForReplica(obj interface{}) 
 	}
 
 	vbc.enqueueVolume(v)
+}
+
+func (vbc *VolumeRebuildingController) enqueueVolumeNodeReady(old, cur interface{}) {
+	oldNode, ok := old.(*longhorn.Node)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected old object: %#v", old))
+		return
+	}
+	curNode, ok := cur.(*longhorn.Node)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected current object: %#v", cur))
+		return
+	}
+
+	if oldNode.Status.Conditions == nil || curNode.Status.Conditions == nil {
+		return
+	}
+	oldReadyStatus := types.GetCondition(oldNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status
+	curReadyStatus := types.GetCondition(curNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status
+	oldSchedulableStatus := types.GetCondition(oldNode.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status
+	curSchedulableStatus := types.GetCondition(curNode.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status
+
+	if (oldNode.Spec.AllowScheduling == curNode.Spec.AllowScheduling || !curNode.Spec.AllowScheduling) &&
+		(oldReadyStatus == curReadyStatus || curReadyStatus == longhorn.ConditionStatusFalse) &&
+		(oldSchedulableStatus == curSchedulableStatus || curSchedulableStatus == longhorn.ConditionStatusFalse) {
+		return
+	}
+
+	// When a node gets ready, enqueue degraded volumes
+	vs, err := vbc.ds.ListVolumesRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list volumes: %v", err))
+		return
+	}
+	for _, v := range vs {
+		if v.Spec.OfflineRebuilding == longhorn.VolumeOfflineRebuildingDisabled {
+			continue
+		}
+		if v.Status.State != longhorn.VolumeStateDetached {
+			continue
+		}
+		vbc.enqueueVolume(v)
+	}
 }
 
 func (vbc *VolumeRebuildingController) Run(workers int, stopCh <-chan struct{}) {
@@ -365,6 +421,13 @@ func (vbc *VolumeRebuildingController) syncLHVolumeAttachmentForOfflineRebuild(v
 		if va.Spec.AttachmentTickets == nil {
 			va.Spec.AttachmentTickets = map[string]*longhorn.AttachmentTicket{}
 		}
+		replicaReusableOrSchedulable, err := vbc.isVolumeReplicasReusableOrSchedulable(vol, replicas)
+		if err != nil {
+			return va, err
+		}
+		if !replicaReusableOrSchedulable {
+			return va, nil
+		}
 		createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeRebuildingController)
 	}
 	return va, nil
@@ -389,6 +452,66 @@ func (vbc *VolumeRebuildingController) isVolumeReplicasHealthy(numberOfReplicas 
 		}
 	}
 	return healthyCount >= numberOfReplicas
+}
+
+func (vbc *VolumeRebuildingController) isVolumeReplicasReusableOrSchedulable(vol *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	reusableFailedReplica, err := vbc.scheduler.CheckAndReuseFailedReplica(rs, vol, "")
+	if err != nil {
+		return false, err
+	}
+	if reusableFailedReplica != nil {
+		vbc.logger.Infof("Reusing failed replica %v for volume %v", reusableFailedReplica.Name, vol.Name)
+		return true, nil
+	}
+
+	hasReplicaDiskCandidates, err := vbc.hasReplicaDiskCandidates(vol, rs)
+	if err != nil {
+		return false, err
+	}
+	return hasReplicaDiskCandidates, nil
+}
+
+func (vbc *VolumeRebuildingController) hasReplicaDiskCandidates(vol *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	engine, err := vbc.getVolumeEngine(vol)
+	if err != nil {
+		return false, err
+	}
+	if engine == nil {
+		vbc.logger.Warnf("Volume %v engine not found, skip offline rebuilding", vol)
+		return false, nil
+	}
+	newReplica := &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            types.GenerateReplicaNameForVolume(vol.Name),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(vol),
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  vol.Name,
+				VolumeSize:  vol.Spec.Size,
+				Image:       vol.Status.CurrentImage,
+				DataEngine:  vol.Spec.DataEngine,
+				DesireState: longhorn.InstanceStateStopped,
+			},
+			EngineName:                       engine.Name,
+			Active:                           true,
+			BackingImage:                     vol.Spec.BackingImage,
+			HardNodeAffinity:                 "",
+			RevisionCounterDisabled:          vol.Spec.RevisionCounterDisabled,
+			UnmapMarkDiskChainRemovedEnabled: engine.Spec.UnmapMarkSnapChainRemovedEnabled,
+			SnapshotMaxCount:                 vol.Spec.SnapshotMaxCount,
+			SnapshotMaxSize:                  vol.Spec.SnapshotMaxSize,
+		},
+	}
+	replicaDiskCandidates, multiError, err := vbc.scheduler.FindDiskCandidates(newReplica, rs, vol)
+	if err != nil {
+		return false, err
+	}
+	if multiError.Join() != "" {
+		return false, fmt.Errorf("failed to get replica disk candidates for volume %v: %v", vol.Name, multiError.Join())
+	}
+
+	return len(replicaDiskCandidates) > 0, nil
 }
 
 func (vbc *VolumeRebuildingController) getVolumeEngine(vol *longhorn.Volume) (*longhorn.Engine, error) {
