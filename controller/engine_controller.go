@@ -972,6 +972,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		engine.Status.RebuildStatus = rebuildStatus
 
+		// If a rebuild completed while the gRPC connection to the sync agent was interrupted,
+		// reloadAndVerify is never called and the replica stays in WO mode indefinitely.
+		// Detect this case and call ReplicaRebuildVerify to transition the replica to RW.
+		m.verifyCompletedRebuild(engine, addressReplicaMap, rebuildStatus, engineClientProxy)
+
 		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers
 		if cliAPIVersion >= 7 && im.Status.APIVersion >= 3 {
 			// Check and correct flag UnmapMarkSnapChainRemoved for the engine and replicas
@@ -1177,6 +1182,33 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	return nil
+}
+
+// verifyCompletedRebuild detects replicas that finished rebuilding while the gRPC connection to the
+// sync agent was interrupted. In that case, reloadAndVerify is never called by startRebuilding and
+// the replica stays in WO mode indefinitely. We call ReplicaRebuildVerify here to transition it to RW.
+func (m *EngineMonitor) verifyCompletedRebuild(engine *longhorn.Engine, addressReplicaMap map[string]string,
+	rebuildStatus map[string]*longhorn.RebuildStatus, engineClientProxy engineapi.EngineClientProxy) {
+	for url, status := range rebuildStatus {
+		if status == nil || status.IsRebuilding || status.State != engineapi.ProcessStateComplete {
+			continue
+		}
+
+		replicaName := addressReplicaMap[engineapi.GetAddressFromBackendReplicaURL(url)]
+		if replicaName == "" {
+			continue
+		}
+
+		mode, exists := engine.Status.ReplicaModeMap[replicaName]
+		if !exists || mode != longhorn.ReplicaModeWO {
+			continue
+		}
+
+		m.logger.Infof("Replica %v completed rebuilding but is still in WO mode, calling ReplicaRebuildVerify", replicaName)
+		if err := engineClientProxy.ReplicaRebuildVerify(engine, replicaName, url); err != nil {
+			m.logger.WithError(err).Warnf("Failed to verify completed rebuild for replica %v, will retry on next poll", replicaName)
+		}
+	}
 }
 
 func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, rebuildStatus map[string]*longhorn.RebuildStatus) error {
