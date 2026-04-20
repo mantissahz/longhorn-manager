@@ -25,6 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -998,7 +999,12 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 				return errors.Wrapf(err, "failed to get engine client proxy for volume frontend %v", ef.Name)
 			}
 			defer engineClientProxy.Close()
-			if err := engineClientProxy.VolumeExpand(ef); err != nil {
+			cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(ef.Status.CurrentImage, ef.Spec.DataEngine)
+			if err != nil {
+				return err
+			}
+			requestExpansionSize := lhtypes.GetBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
+			if err := engineClientProxy.VolumeExpand(ef, requestExpansionSize); err != nil {
 				if isV2ExpansionInProgressError(err) {
 					m.logger.WithError(err).Debug("Skipping engine frontend expansion because expansion is already in progress")
 					return nil

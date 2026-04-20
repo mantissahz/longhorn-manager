@@ -31,6 +31,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -534,6 +535,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
+		Encrypted:                        v.Spec.Encrypted,
 		VolumeFrontend:                   frontend,
 		UblkQueueDepth:                   ublkQueueDepth,
 		UblkNumberOfQueue:                ublkNumberOfQueue,
@@ -1075,20 +1077,26 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		existingEngine = engine.DeepCopy()
 	}
 
+	volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
 	requireExpansion, err := IsValidForExpansion(engine, cliAPIVersion, im.Status.APIVersion)
 	if err != nil {
 		engine.Status.LastExpansionError = err.Error()
 		engine.Status.LastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
+	requestExpansionSize := lhtypes.GetBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
 	if requireExpansion {
 		// Cannot continue to start restoration if expansion is not complete
 		if types.IsDataEngineV1(engine.Spec.DataEngine) {
 			if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
 				m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
 			} else {
-				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
+				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, requestExpansionSize)
 				m.expansionUpdateTime = time.Now()
-				if err := engineClientProxy.VolumeExpand(engine); err != nil {
+				if err := engineClientProxy.VolumeExpand(engine, requestExpansionSize); err != nil {
 					return err
 				}
 			}
@@ -1098,7 +1106,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		// Do not return early here so that restore status polling can continue.
 	}
 	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
-	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
+	if requestExpansionSize == engine.Status.CurrentSize {
 		m.expansionBackoff.DeleteEntry(engine.Name)
 		m.expansionUpdateTime = time.Now()
 		engine.Status.LastExpansionError = ""

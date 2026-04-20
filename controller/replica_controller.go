@@ -411,6 +411,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:             r,
+		Encrypted:           v.Spec.Encrypted,
 		DiskName:            diskName,
 		DataPath:            dataPath,
 		BackingImagePath:    backingImagePath,

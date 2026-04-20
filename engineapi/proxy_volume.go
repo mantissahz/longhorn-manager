@@ -44,8 +44,8 @@ func (p *Proxy) VolumeFrontendGet(e *longhorn.Engine, ef *longhorn.EngineFronten
 	return (*Volume)(recv), nil
 }
 
-func (p *Proxy) VolumeExpand(obj DataEngineObject) (err error) {
-	return p.grpcClient.VolumeExpand(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj), obj.GetVolumeSize())
+func (p *Proxy) VolumeExpand(obj DataEngineObject, size int64) (err error) {
+	return p.grpcClient.VolumeExpand(obj.GetDataEngine(), obj.GetEngineName(), obj.GetEngineFrontendName(), obj.GetVolumeName(), p.DirectToURL(obj), size)
 }
 
 func (p *Proxy) VolumeFrontendStart(e *longhorn.Engine) (err error) {

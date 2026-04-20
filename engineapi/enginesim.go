@@ -220,7 +220,7 @@ func (e *EngineSimulator) VolumeFrontendGet(*longhorn.Engine, *longhorn.EngineFr
 	return nil, errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) VolumeExpand(obj DataEngineObject) error {
+func (e *EngineSimulator) VolumeExpand(obj DataEngineObject, size int64) error {
 	return errors.New(ErrNotImplement)
 }
 
