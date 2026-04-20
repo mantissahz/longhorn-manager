@@ -477,6 +477,10 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 		args = append(args, "--snapshot-max-size", strconv.FormatInt(r.Spec.SnapshotMaxSize, 10))
 	}
 
+	if encrypted && engineCLIAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+		args = append(args, "--encrypted")
+	}
+
 	// 3 ports are already used by replica server, data server and syncagent server
 	syncAgentPortCount := portCount - 3
 	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
