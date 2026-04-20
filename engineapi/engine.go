@@ -235,8 +235,7 @@ func (e *EngineBinary) VersionGet(obj DataEngineObject, clientOnly bool) (*Engin
 
 // VolumeExpand calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) VolumeExpand(obj DataEngineObject) error {
-	size := obj.GetVolumeSize()
+func (e *EngineBinary) VolumeExpand(obj DataEngineObject, size int64) error {
 	if _, err := e.ExecuteEngineBinary("expand", "--size", strconv.FormatInt(size, 10)); err != nil {
 		return errors.Wrapf(err, "cannot get expand volume engine to size %v", size)
 	}

@@ -11,6 +11,7 @@ import (
 	"go.uber.org/multierr"
 
 	lhlonghorn "github.com/longhorn/go-common-libs/longhorn"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
@@ -370,7 +371,7 @@ func getTypeForProcess(name string) longhorn.InstanceType {
 
 func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 	frontend string, engineReplicaTimeout, replicaFileSyncHTTPClientTimeout int64,
-	dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string, error) {
+	dataLocality longhorn.DataLocality, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
 
 	args := []string{"controller", e.Spec.VolumeName,
 		"--frontend", frontend,
@@ -386,8 +387,9 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 
 	if engineCLIAPIVersion >= 6 {
 		args = append(args,
-			"--size", strconv.FormatInt(e.Spec.VolumeSize, 10),
-			"--current-size", strconv.FormatInt(e.Status.CurrentSize, 10))
+			"--size", strconv.FormatInt(lhtypes.GetBackendSize(e.Spec.VolumeSize, encrypted, engineCLIAPIVersion), 10),
+			"--current-size", strconv.FormatInt(lhtypes.GetBackendSize(e.Status.CurrentSize, encrypted, engineCLIAPIVersion), 10),
+		)
 	}
 
 	if engineCLIAPIVersion >= 7 {
@@ -426,11 +428,11 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int) (string, []string) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string) {
 
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
-		"--size", strconv.FormatInt(r.Spec.VolumeSize, 10),
+		"--size", strconv.FormatInt(lhtypes.GetBackendSize(r.Spec.VolumeSize, encrypted, engineCLIAPIVersion), 10),
 	}
 	if backingImagePath != "" {
 		args = append(args, "--backing-file", backingImagePath)
@@ -474,6 +476,7 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 
 type EngineInstanceCreateRequest struct {
 	Engine                           *longhorn.Engine
+	Encrypted                        bool
 	VolumeFrontend                   longhorn.VolumeFrontend
 	UblkQueueDepth                   int
 	UblkNumberOfQueue                int
@@ -505,7 +508,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	switch req.Engine.Spec.DataEngine {
 	case longhorn.DataEngineTypeV1:
-		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion)
+		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion, req.Encrypted)
 		if err != nil {
 			return nil, err
 		}
@@ -561,6 +564,7 @@ type ReplicaInstanceCreateRequest struct {
 	BackingImagePath    string
 	DataLocality        longhorn.DataLocality
 	EngineCLIAPIVersion int
+	Encrypted           bool
 }
 
 // EngineFrontendInstanceCreateRequest contains the parameters to create an engine frontend (initiator) instance
@@ -660,7 +664,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	binary := ""
 	args := []string{}
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
+		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
 	}
 
 	if c.GetAPIVersion() < 4 {

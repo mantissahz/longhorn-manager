@@ -33,7 +33,7 @@ const (
 	//  https://gitlab.com/cryptsetup/cryptsetup/-/wikis/FrequentlyAskedQuestions
 	//  Section 10.10 What about the size of the LUKS2 header
 	//  The default size is 16MB
-	Luks2MinimalVolumeSize = 16 * 1024 * 1024
+	Luks2MinimalVolumeSize = lhtypes.Luks2EncryptionHeaderSize
 )
 
 // EncryptParams keeps the customized cipher options from the secret CR

@@ -95,7 +95,7 @@ type EngineClient interface {
 
 	VolumeGet(*longhorn.Engine) (*Volume, error)
 	VolumeFrontendGet(*longhorn.Engine, *longhorn.EngineFrontend) (*Volume, error)
-	VolumeExpand(obj DataEngineObject) error
+	VolumeExpand(obj DataEngineObject, size int64) error
 
 	VolumeFrontendStart(*longhorn.Engine) error
 	VolumeFrontendShutdown(*longhorn.Engine) error
