@@ -334,8 +334,17 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
+	volume, err := ec.ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
 	syncReplicaAddressMap := false
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.Image {
+		if isExpanding, err := ec.expandEncryptedVolumeBeforeLiveUpgrade(volume, engine); err != nil || isExpanding {
+			// Wait for the expected volume size to be updated before engine live upgrade for encrypted volume
+			return err
+		}
 		if err := ec.Upgrade(engine, log); err != nil {
 			// Engine live upgrade failure shouldn't block the following engine state update.
 			log.WithError(err).Error("Failed to run engine live upgrade")
@@ -385,6 +394,56 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	return nil
 }
 
+func (ec *EngineController) expandEncryptedVolumeBeforeLiveUpgrade(v *longhorn.Volume, e *longhorn.Engine) (bool, error) {
+	if !v.Spec.Encrypted || e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false, nil
+	}
+
+	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+	if err != nil {
+		return false, err
+	}
+	defer engineClientProxy.Close()
+
+	volumeInfo, err := engineClientProxy.VolumeGet(e)
+	if err != nil {
+		return false, err
+	}
+
+	engineCurrentSize := volumeInfo.Size
+	actualBackendSize := lhtypes.GetBackendSize(e.Spec.VolumeSize, v.Spec.Encrypted, cliAPIVersion)
+
+	log := ec.logger.WithFields(
+		logrus.Fields{
+			"engine":              e.Name,
+			"currentSize":         engineCurrentSize,
+			"expectedBackendSize": actualBackendSize,
+			"volume":              e.Spec.VolumeName,
+		})
+
+	if engineCurrentSize < actualBackendSize {
+		log.Info("Waiting for the expected volume size to be updated before engine live upgrade for encrypted volume")
+		if !e.Status.IsExpanding {
+			log.Infof("Expanding the encrypted volume before engine live upgrade from %v to %v", engineCurrentSize, actualBackendSize)
+			if err := engineClientProxy.VolumeExpand(e, actualBackendSize); err != nil {
+				return false, err
+			}
+		}
+
+		e.Status.IsExpanding = true
+		ec.enqueueEngineAfter(e, 3*time.Second)
+	} else {
+		e.Status.IsExpanding = false
+	}
+
+	return e.Status.IsExpanding, nil
+}
+
 func failedCloneBefore(e *longhorn.Engine) bool {
 	for _, status := range e.Status.CloneStatus {
 		if status.State == engineapi.ProcessStateError {
@@ -402,6 +461,16 @@ func (ec *EngineController) enqueueEngine(obj interface{}) {
 	}
 
 	ec.queue.Add(key)
+}
+
+func (ec *EngineController) enqueueEngineAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueEngineAfter: failed to get key for object %#v: %v", obj, err))
+		return
+	}
+
+	ec.queue.AddAfter(key, duration)
 }
 
 func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
@@ -1058,6 +1127,19 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	removeInvalidEngineOpStatus(engine)
 
+	volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
+	// align 'engine.Status.CurrentSize' to 'engine.Spec.VolumeSize' if the backend size is expected.
+	if volume.Spec.Encrypted && cliAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize {
+		actualBackendSize := lhtypes.GetBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
+		if actualBackendSize == engine.Status.CurrentSize {
+			engine.Status.CurrentSize = engine.Spec.VolumeSize
+		}
+	}
+
 	// Make sure the engine object is updated before engineapi calls.
 	needStatusUpdate, rateLimited := m.needStatusUpdate(existingEngine, engine)
 	if needStatusUpdate && (!rateLimited || m.sizeUpdateLimiter.Tokens() >= 1) {
@@ -1077,26 +1159,22 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		existingEngine = engine.DeepCopy()
 	}
 
-	volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
-	if err != nil {
-		return err
-	}
-
 	requireExpansion, err := IsValidForExpansion(engine, cliAPIVersion, im.Status.APIVersion)
 	if err != nil {
 		engine.Status.LastExpansionError = err.Error()
 		engine.Status.LastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	requestExpansionSize := lhtypes.GetBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
+
 	if requireExpansion {
 		// Cannot continue to start restoration if expansion is not complete
 		if types.IsDataEngineV1(engine.Spec.DataEngine) {
 			if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
 				m.logger.Debug("Cannot start engine expansion since it is in the back-off window")
 			} else {
-				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, requestExpansionSize)
+				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
+				expectedBackendSize := lhtypes.GetBackendSize(engine.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
 				m.expansionUpdateTime = time.Now()
-				if err := engineClientProxy.VolumeExpand(engine, requestExpansionSize); err != nil {
+				if err := engineClientProxy.VolumeExpand(engine, expectedBackendSize); err != nil {
 					return err
 				}
 			}
@@ -1106,7 +1184,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		// Do not return early here so that restore status polling can continue.
 	}
 	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
-	if requestExpansionSize == engine.Status.CurrentSize {
+	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
 		m.expansionBackoff.DeleteEntry(engine.Name)
 		m.expansionUpdateTime = time.Now()
 		engine.Status.LastExpansionError = ""
@@ -2527,6 +2605,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 
 	engineInstance, err := c.EngineInstanceUpgrade(&engineapi.EngineInstanceUpgradeRequest{
 		Engine:                           e,
+		Encrypted:                        v.Spec.Encrypted,
 		VolumeFrontend:                   frontend,
 		EngineReplicaTimeout:             engineReplicaTimeout,
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,

@@ -828,6 +828,7 @@ func (c *InstanceManagerClient) InstanceList() (map[string]longhorn.InstanceProc
 
 type EngineInstanceUpgradeRequest struct {
 	Engine                           *longhorn.Engine
+	Encrypted                        bool
 	VolumeFrontend                   longhorn.VolumeFrontend
 	EngineReplicaTimeout             int64
 	ReplicaFileSyncHTTPClientTimeout int64
@@ -869,8 +870,8 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 
 	if req.EngineCLIAPIVersion >= 6 {
 		args = append(args,
-			"--size", strconv.FormatInt(req.Engine.Spec.VolumeSize, 10),
-			"--current-size", strconv.FormatInt(req.Engine.Status.CurrentSize, 10))
+			"--size", strconv.FormatInt(lhtypes.GetBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, req.EngineCLIAPIVersion), 10),
+			"--current-size", strconv.FormatInt(lhtypes.GetBackendSize(req.Engine.Status.CurrentSize, req.Encrypted, req.EngineCLIAPIVersion), 10))
 	}
 
 	if req.EngineCLIAPIVersion >= 7 {
