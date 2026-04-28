@@ -386,10 +386,17 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 	}
 
 	if engineCLIAPIVersion >= 6 {
+		requestSize, err := util.GetActualBackendSize(e.Spec.VolumeSize, encrypted, engineCLIAPIVersion)
+		if err != nil {
+			return "", nil, err
+		}
+		requestCurrentSize, err := util.GetActualBackendSize(e.Status.CurrentSize, encrypted, engineCLIAPIVersion)
+		if err != nil {
+			return "", nil, err
+		}
 		args = append(args,
-			"--size", strconv.FormatInt(lhtypes.GetBackendSize(e.Spec.VolumeSize, encrypted, engineCLIAPIVersion), 10),
-			"--current-size", strconv.FormatInt(lhtypes.GetBackendSize(e.Status.CurrentSize, encrypted, engineCLIAPIVersion), 10),
-		)
+			"--size", strconv.FormatInt(requestSize, 10),
+			"--current-size", strconv.FormatInt(requestCurrentSize, 10))
 	}
 
 	if engineCLIAPIVersion >= 7 {
@@ -428,11 +435,16 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int, encrypted bool) (string, []string, error) {
+
+	requestSize, err := util.GetActualBackendSize(r.Spec.VolumeSize, encrypted, engineCLIAPIVersion)
+	if err != nil {
+		return "", nil, err
+	}
 
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
-		"--size", strconv.FormatInt(lhtypes.GetBackendSize(r.Spec.VolumeSize, encrypted, engineCLIAPIVersion), 10),
+		"--size", strconv.FormatInt(requestSize, 10),
 	}
 	if backingImagePath != "" {
 		args = append(args, "--backing-file", backingImagePath)
@@ -471,7 +483,7 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image), types.EngineBinaryName)
 
-	return binary, args
+	return binary, args, nil
 }
 
 type EngineInstanceCreateRequest struct {
@@ -663,8 +675,12 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
+	var err error
 	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
+		binary, args, err = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion, req.Encrypted)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -869,9 +885,21 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 	}
 
 	if req.EngineCLIAPIVersion >= 6 {
+		requestSize := req.Engine.Spec.VolumeSize
+		requestCurrentSize := req.Engine.Status.CurrentSize
+		if req.Encrypted {
+			is16MiBHeaderPkgVersion, err := util.IsCryptsetupVerWithFixed16MiBHeaderSize()
+			if err != nil {
+				return nil, err
+			}
+			if is16MiBHeaderPkgVersion {
+				requestSize = lhtypes.GetBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, req.EngineCLIAPIVersion)
+				requestCurrentSize = lhtypes.GetBackendSize(req.Engine.Status.CurrentSize, req.Encrypted, req.EngineCLIAPIVersion)
+			}
+		}
 		args = append(args,
-			"--size", strconv.FormatInt(lhtypes.GetBackendSize(req.Engine.Spec.VolumeSize, req.Encrypted, req.EngineCLIAPIVersion), 10),
-			"--current-size", strconv.FormatInt(lhtypes.GetBackendSize(req.Engine.Status.CurrentSize, req.Encrypted, req.EngineCLIAPIVersion), 10))
+			"--size", strconv.FormatInt(requestSize, 10),
+			"--current-size", strconv.FormatInt(requestCurrentSize, 10))
 	}
 
 	if req.EngineCLIAPIVersion >= 7 {
