@@ -25,7 +25,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -1003,8 +1002,11 @@ func (m *EngineFrontendMonitor) refresh(ef *longhorn.EngineFrontend) (err error)
 			if err != nil {
 				return err
 			}
-			requestExpansionSize := lhtypes.GetBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
-			if err := engineClientProxy.VolumeExpand(ef, requestExpansionSize); err != nil {
+			expectedExpansionSize, err := util.GetActualBackendSize(ef.Spec.VolumeSize, volume.Spec.Encrypted, cliAPIVersion)
+			if err != nil {
+				return err
+			}
+			if err := engineClientProxy.VolumeExpand(ef, expectedExpansionSize); err != nil {
 				if isV2ExpansionInProgressError(err) {
 					m.logger.WithError(err).Debug("Skipping engine frontend expansion because expansion is already in progress")
 					return nil
