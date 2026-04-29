@@ -445,7 +445,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Update BackupVolume CR status
 	backupVolume.Status.LastModificationTime = metav1.Time{Time: configMetadata.ModificationTime}
-	backupVolume.Status.Size = backupVolumeInfo.Size
 	backupVolume.Status.Labels = backupVolumeInfo.Labels
 	backupVolume.Status.CreatedAt = backupVolumeInfo.Created
 	backupVolume.Status.LastBackupName = backupVolumeInfo.LastBackupName
@@ -456,6 +455,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
 	backupVolume.Status.LastSyncedAt = syncTime
+	backupVolume.Status.Size, err = getCorrectedEncryptedVolumeSize(backupVolumeInfo.Size, backupVolumeInfo.Labels)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to get corrected encrypted volume size: %v", backupVolumeInfo.Size)
+		return err
+	}
+
 	return nil
 }
 

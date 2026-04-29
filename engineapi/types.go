@@ -127,7 +127,7 @@ type EngineClient interface {
 	SnapshotHash(obj DataEngineObject, snapshotName string, rehash bool) error
 	SnapshotHashStatus(obj DataEngineObject, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
-	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error
+	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
 
 	SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error)
