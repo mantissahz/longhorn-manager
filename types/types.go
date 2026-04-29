@@ -217,6 +217,9 @@ const (
 	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"
 	KubernetesTopologyZoneLabelKey        = "topology.kubernetes.io/zone"
 
+	KubernetesCSINodeStageSecretNameKey      = "csi.storage.k8s.io/node-stage-secret-name"
+	KubernetesCSINodeStageSecretNamespaceKey = "csi.storage.k8s.io/node-stage-secret-namespace"
+
 	KubernetesClusterAutoscalerSafeToEvictKey = "cluster-autoscaler.kubernetes.io/safe-to-evict"
 
 	LonghornDriverName = "driver.longhorn.io"

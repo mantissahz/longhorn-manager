@@ -38,6 +38,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -447,9 +448,77 @@ func (ec *EngineController) expandEncryptedVolumeBeforeLiveUpgrade(v *longhorn.V
 		ec.enqueueEngineAfter(e, 3*time.Second)
 	} else {
 		e.Status.IsExpanding = false
+		// Blindly resize the LUKS device after the backend size is expanded.
+		if err := ec.resizeEncryptDevFor16MiBHeader(v); err != nil {
+			return false, err
+		}
 	}
 
 	return e.Status.IsExpanding, nil
+}
+
+func (ec *EngineController) resizeEncryptDevFor16MiBHeader(v *longhorn.Volume) error {
+	if !v.Spec.Encrypted {
+		return nil
+	}
+
+	kubernetesStatus := &v.Status.KubernetesStatus
+	namespace := kubernetesStatus.Namespace
+	pvcName := kubernetesStatus.PVCName
+	if pvcName == "" || kubernetesStatus.LastPVCRefAt != "" {
+		return nil
+	}
+
+	pvc, err := ec.ds.GetPersistentVolumeClaim(namespace, pvcName)
+	if err != nil {
+		return err
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
+		return nil
+	}
+
+	pvcSCName := *pvc.Spec.StorageClassName
+	pvcStorageClass, err := ec.ds.GetStorageClassRO(pvcSCName)
+	if err != nil {
+		return err
+	}
+
+	secretName, ok := pvcStorageClass.Parameters[types.KubernetesCSINodeStageSecretNameKey]
+	if !ok {
+		return nil
+	}
+	secretNamespace, ok := pvcStorageClass.Parameters[types.KubernetesCSINodeStageSecretNamespaceKey]
+	if !ok {
+		return nil
+	}
+	secret, err := ec.ds.GetSecretRO(secretNamespace, secretName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			ec.logger.Debugf("secret %s/%s not found from storage class %s", secretNamespace, secretName, pvcSCName)
+			return nil
+		}
+		return err
+	}
+	if secret.Data == nil {
+		ec.logger.Debugf("secret %s/%s data is nil from storage class %s", secretNamespace, secretName, pvcSCName)
+		return nil
+	}
+
+	keyProvider := string(secret.Data[lhtypes.CryptoKeyProvider])
+	passphrase := string(secret.Data[lhtypes.CryptoKeyValue])
+	if keyProvider != "" && keyProvider != "secret" {
+		return nil
+	}
+	if len(passphrase) == 0 {
+		return nil
+	}
+
+	err = crypto.ResizeEncryptoDevice(v.Name, string(v.Spec.DataEngine), passphrase)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func failedCloneBefore(e *longhorn.Engine) bool {
