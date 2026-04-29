@@ -43,8 +43,8 @@ github.com/c9s/goprocinfo/linux
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/cockroachdb/errors v1.12.0
-## explicit; go 1.23.0
+# github.com/cockroachdb/errors v1.13.0
+## explicit; go 1.25.0
 github.com/cockroachdb/errors
 github.com/cockroachdb/errors/assert
 github.com/cockroachdb/errors/barriers
@@ -127,14 +127,20 @@ github.com/gammazero/deque
 # github.com/gammazero/workerpool v1.1.3
 ## explicit; go 1.18
 github.com/gammazero/workerpool
-# github.com/getsentry/sentry-go v0.27.0
-## explicit; go 1.18
+# github.com/getsentry/sentry-go v0.46.0
+## explicit; go 1.25.0
 github.com/getsentry/sentry-go
+github.com/getsentry/sentry-go/attribute
 github.com/getsentry/sentry-go/internal/debug
+github.com/getsentry/sentry-go/internal/debuglog
+github.com/getsentry/sentry-go/internal/http
 github.com/getsentry/sentry-go/internal/otel/baggage
 github.com/getsentry/sentry-go/internal/otel/baggage/internal/baggage
+github.com/getsentry/sentry-go/internal/protocol
 github.com/getsentry/sentry-go/internal/ratelimit
-github.com/getsentry/sentry-go/internal/traceparser
+github.com/getsentry/sentry-go/internal/telemetry
+github.com/getsentry/sentry-go/internal/util
+github.com/getsentry/sentry-go/report
 # github.com/gliderlabs/ssh v0.3.8
 ## explicit; go 1.17
 github.com/gliderlabs/ssh
@@ -317,14 +323,14 @@ github.com/longhorn/go-spdk-helper/pkg/spdk/setup
 github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
 github.com/longhorn/go-spdk-helper/pkg/util
-# github.com/longhorn/longhorn-engine v1.12.0-dev-20260419
-## explicit; go 1.25.0
+# github.com/longhorn/longhorn-engine v1.12.0-dev-20260419.0.20260429072047-589f2d5665a3
+## explicit; go 1.26.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260419.0.20260426153036-7514289bad66
+# github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260419.0.20260429083054-d6c61b025956
 ## explicit; go 1.26.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
