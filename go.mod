@@ -56,7 +56,7 @@ replace (
 )
 
 require (
-	github.com/cockroachdb/errors v1.12.0
+	github.com/cockroachdb/errors v1.13.0
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/docker/go-connections v0.6.0
 	github.com/go-co-op/gocron v1.37.0
@@ -72,8 +72,8 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20260418032157-c135767e4855
 	github.com/longhorn/go-iscsi-helper v0.0.0-20260331100542-4c4c6f91525b
 	github.com/longhorn/go-spdk-helper v0.6.1-0.20260422091955-74dd5ebcf118
-	github.com/longhorn/longhorn-engine v1.12.0-dev-20260419
-	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260419.0.20260426153036-7514289bad66
+	github.com/longhorn/longhorn-engine v1.12.0-dev-20260419.0.20260429072047-589f2d5665a3
+	github.com/longhorn/longhorn-instance-manager v1.12.0-dev-20260419.0.20260429083054-d6c61b025956
 	github.com/longhorn/longhorn-share-manager v1.12.0-dev-20260419.0.20260426105811-243598c42581
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20260424114859-e899814562ff
 	github.com/prometheus/client_golang v1.23.2
@@ -121,7 +121,7 @@ require (
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/getsentry/sentry-go v0.27.0 // indirect
+	github.com/getsentry/sentry-go v0.46.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/swag/cmdutils v0.25.4 // indirect
