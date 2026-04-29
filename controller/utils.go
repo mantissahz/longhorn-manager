@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -14,6 +15,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -241,4 +244,19 @@ func getAwsIAMRoleArnFromSecret(ds *datastore.DataStore, namespace, secretName s
 	}
 	// Key not found; clear the annotation if needed.
 	return "", nil
+}
+
+func getCorrectedEncryptedVolumeSize(volumeSizeStr string, labels map[string]string) (string, error) {
+	if encrypted, exists := labels[types.LonghornLabelVolumeEncrypted]; exists && encrypted == types.LonghornLabelValueEnabled {
+		volumeSize, err := strconv.ParseInt(volumeSizeStr, 10, 64)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to convert volume size: %v", volumeSizeStr)
+		}
+		correctedSize := volumeSize - lhtypes.Luks2EncryptionHeaderSize
+		if correctedSize < 0 {
+			return "", errors.Errorf("corrected volume size is negative: %d", correctedSize)
+		}
+		return strconv.FormatInt(correctedSize, 10), nil
+	}
+	return volumeSizeStr, nil
 }

@@ -1332,7 +1332,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
-		if err = m.restoreBackup(engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
+		if err = m.restoreBackup(volume, engine, rsMap, cliAPIVersion, engineClientProxy); err != nil {
 			m.restoreBackoff.DeleteEntry(engine.Name)
 			if err := m.acquireRestoringCounter(false); err != nil {
 				m.logger.WithError(err).Warn("Failed to unacquire restoring counter")
@@ -1780,7 +1780,7 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	return true, nil
 }
 
-func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
+func (m *EngineMonitor) restoreBackup(volume *longhorn.Volume, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
 	backupVolume, err := m.ds.GetBackupVolumeRO(engine.Spec.BackupVolume)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup volume %v for backup restoration of engine %v", engine.Spec.BackupVolume, engine.Name)
@@ -1816,7 +1816,13 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 		lastRestoredBackup = engine.Status.LastRestoredBackup
 		restoreErrorHandler = handleRestoreErrorForCompatibleEngine
 	}
-	if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, backupVolume.Spec.VolumeName, lastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit)); err != nil {
+	needCorrectEncryptedVolumeSize := false
+	if volume.Spec.Encrypted && cliAPIVersion >= lhtypes.CliAPIVersionForSupportingExtendLuks2HeaderSize && backupVolume.Status.Labels != nil {
+		if _, exists := backupVolume.Status.Labels[types.LonghornLabelVolumeEncrypted]; !exists {
+			needCorrectEncryptedVolumeSize = true
+		}
+	}
+	if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, backupVolume.Spec.VolumeName, lastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit), needCorrectEncryptedVolumeSize); err != nil {
 		if extraErr := restoreErrorHandler(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
 			return extraErr
 		}

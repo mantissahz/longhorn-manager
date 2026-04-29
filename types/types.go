@@ -174,6 +174,7 @@ const (
 	LonghornLabelInstanceManagerType        = "instance-manager-type"
 	LonghornLabelInstanceManagerImage       = "instance-manager-image"
 	LonghornLabelVolume                     = "longhornvolume"
+	LonghornLabelVolumeEncrypted            = "volume-encrypted"
 	LonghornLabelShareManager               = "share-manager"
 	LonghornLabelShareManagerImage          = "share-manager-image"
 	LonghornLabelShareManagerConfigMap      = "share-manager-configmap"

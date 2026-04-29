@@ -55,7 +55,7 @@ func (p *Proxy) SnapshotBackupStatus(obj DataEngineObject, backupName, replicaAd
 }
 
 func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string,
-	credential map[string]string, concurrentLimit int) error {
+	credential map[string]string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) error {
 	backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
@@ -65,7 +65,7 @@ func (p *Proxy) BackupRestore(e *longhorn.Engine, backupTarget, backupName, back
 	}
 
 	return p.grpcClient.BackupRestore(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
-		backupURL, backupTarget, backupVolumeName, envs, concurrentLimit)
+		backupURL, backupTarget, backupVolumeName, envs, concurrentLimit, needCorrectEncryptedVolumeSize)
 }
 
 func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*longhorn.RestoreStatus, err error) {

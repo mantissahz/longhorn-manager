@@ -426,7 +426,7 @@ func ConvertEngineBackupState(state string) longhorn.BackupState {
 // BackupRestore calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolumeName,
-	lastRestored string, credential map[string]string, concurrentLimit int) error {
+	lastRestored string, credential map[string]string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) error {
 	backup := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3
@@ -440,6 +440,9 @@ func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, back
 	//  when the manager doesn't support the engine v1.0.0 or older version.
 	if lastRestored != "" {
 		args = append(args, "--incrementally", "--last-restored", lastRestored)
+	}
+	if needCorrectEncryptedVolumeSize {
+		args = append(args, "--need-correct-encrypted-volume-size")
 	}
 
 	if output, err := e.ExecuteEngineBinaryWithoutTimeout(envs, args...); err != nil {

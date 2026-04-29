@@ -224,7 +224,7 @@ func (e *EngineSimulator) VolumeExpand(obj DataEngineObject, size int64) error {
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error {
+func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int, needCorrectEncryptedVolumeSize bool) error {
 	return errors.New(ErrNotImplement)
 }
 
